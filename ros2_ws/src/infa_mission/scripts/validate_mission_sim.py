@@ -2,28 +2,53 @@
 """Simulation-style validation for standoff lock and sweep coverage over a mock wall."""
 
 from math import hypot
+from statistics import fmean
+from typing import List, Tuple
 
 from infa_mission.mission_logic import LawnmowerConfig, LawnmowerPlanner, StructureLockConfig, StructureLockController
 
 
-def validate_lock() -> float:
+def validate_lock() -> Tuple[float, float]:
+    """Return mean and max standoff error while converging from multiple start points."""
     controller = StructureLockController(
         StructureLockConfig(standoff_m=2.0, speed_mps=0.6, abort_distance_error_m=5.0)
     )
     plane = (-1.0, 0.0, 0.0, 5.0)  # wall at x = 5m
-    x, y, z = 1.0, 0.0, 0.0
     dt = 0.1
+    start_positions = [
+        (1.0, 0.0, 0.0),
+        (2.5, 1.0, 0.0),
+        (4.0, -1.5, 0.0),
+    ]
+    standoff_errors: List[float] = []
 
-    for _ in range(250):
-        vx, vy = controller.compute_command((x, y, z), plane)
-        x += vx * dt
-        y += vy * dt
-        if hypot(vx, vy) < 0.01:
-            break
+    for start_x, start_y, start_z in start_positions:
+        x, y, z = start_x, start_y, start_z
+        run_errors: List[float] = []
+        for _ in range(250):
+            signed_dist = _distance_to_plane((x, y, z), plane)
+            run_errors.append(abs(signed_dist - 2.0))
 
-    signed_dist = ((plane[0] * x + plane[1] * y + plane[2] * z + plane[3]) /
-                   max((plane[0] ** 2 + plane[1] ** 2 + plane[2] ** 2) ** 0.5, 1e-6))
-    return abs(signed_dist - 2.0)
+            vx, vy = controller.compute_command((x, y, z), plane)
+            x += vx * dt
+            y += vy * dt
+            if hypot(vx, vy) < 0.01:
+                break
+
+        steady_state_window = run_errors[-20:] if len(run_errors) > 20 else run_errors
+        standoff_errors.extend(steady_state_window)
+
+    if not standoff_errors:
+        return 0.0, 0.0
+
+    return fmean(standoff_errors), max(standoff_errors)
+
+
+def _distance_to_plane(position, plane):
+    x, y, z = position
+    a, b, c, d = plane
+    norm = max((a * a + b * b + c * c) ** 0.5, 1e-6)
+    return (a * x + b * y + c * z + d) / norm
 
 
 def validate_coverage() -> float:
@@ -71,13 +96,14 @@ def _distance_point_to_segment(px, py, x1, y1, x2, y2):
 
 
 def main() -> None:
-    distance_error = validate_lock()
+    mean_error, max_error = validate_lock()
     coverage_pct = validate_coverage()
 
-    print(f'Distance error: {distance_error:.3f} m')
-    print(f'Coverage: {coverage_pct:.1f} %')
+    print(f'Mean standoff error: {mean_error:.3f} m')
+    print(f'Max standoff deviation: {max_error:.3f} m')
+    print(f'Surface coverage: {coverage_pct:.1f} %')
 
-    if distance_error > 0.15:
+    if max_error > 0.15:
         raise SystemExit('FAIL: standoff error exceeded 0.15m')
     if coverage_pct < 90.0:
         raise SystemExit('FAIL: coverage below 90%')
