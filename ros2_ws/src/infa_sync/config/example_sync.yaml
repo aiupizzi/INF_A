@@ -1,0 +1,14 @@
+infa_sync:
+  ros__parameters:
+    mission_complete_topic: /infa/mission_complete
+    imagery_dir: /data/infa/mission_001/images
+    image_pattern: '*.jpg'
+    webodm_url: https://webodm.internal
+    webodm_username: infa_sync
+    webodm_password: change-me
+    webodm_project_id: 1
+    poll_interval_s: 15.0
+    poll_timeout_s: 5400.0
+    verify_tls: true
+    task_name_prefix: infa-mission
+    task_options_json: '{"auto-boundary": true, "orthophoto-resolution": 2.0}'
