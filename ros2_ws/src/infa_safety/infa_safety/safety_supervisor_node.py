@@ -1,5 +1,4 @@
 import json
-from typing import Optional
 
 import rclpy
 from geometry_msgs.msg import PoseStamped, Twist
@@ -20,6 +19,18 @@ class SafetySupervisor(Node):
         self.declare_parameter('safe_zone_y', 0.0)
         self.declare_parameter('safe_zone_z', 2.0)
 
+        self.declare_parameter('event_topic', '/infa/safety/event')
+        self.declare_parameter('fallback_topic', '/infa/flight/fallback_mode')
+        self.declare_parameter('preempt_topic', '/infa/mission/preempt')
+        self.declare_parameter('safe_zone_target_topic', '/infa/mission/safe_zone_target')
+        self.declare_parameter('avoidance_topic', '/infa/safety/avoidance_cmd')
+        self.declare_parameter('vio_quality_topic', '/infa/vio/quality')
+        self.declare_parameter('vio_pose_age_topic', '/infa/vio/pose_age_s')
+        self.declare_parameter('battery_topic', '/infa/battery/state')
+        self.declare_parameter('wind_proxy_topic', '/infa/wind/load_proxy')
+        self.declare_parameter('lidar_topic', '/infa/lidar/scan_360')
+        self.declare_parameter('mission_state_topic', '/infa/mission/state')
+
         self._event_seq = 0
         self._state_machine = MissionStateMachine()
 
@@ -27,18 +38,18 @@ class SafetySupervisor(Node):
         self._power_monitor = PowerAbortMonitor()
         self._cage_monitor = VirtualCageAvoidance()
 
-        self._event_pub = self.create_publisher(String, 'safety/event', 10)
-        self._fallback_pub = self.create_publisher(String, 'flight/fallback_mode', 10)
-        self._preempt_pub = self.create_publisher(String, 'mission/preempt', 10)
-        self._safe_zone_pub = self.create_publisher(PoseStamped, 'mission/safe_zone_target', 10)
-        self._avoidance_pub = self.create_publisher(Twist, 'safety/avoidance_cmd', 10)
+        self._event_pub = self.create_publisher(String, str(self.get_parameter('event_topic').value), 10)
+        self._fallback_pub = self.create_publisher(String, str(self.get_parameter('fallback_topic').value), 10)
+        self._preempt_pub = self.create_publisher(String, str(self.get_parameter('preempt_topic').value), 10)
+        self._safe_zone_pub = self.create_publisher(PoseStamped, str(self.get_parameter('safe_zone_target_topic').value), 10)
+        self._avoidance_pub = self.create_publisher(Twist, str(self.get_parameter('avoidance_topic').value), 10)
 
-        self.create_subscription(Float32, 'vio/quality', self._on_vio_quality, 10)
-        self.create_subscription(Float32, 'vio/pose_age_s', self._on_vio_pose_age, 10)
-        self.create_subscription(BatteryState, 'battery/state', self._on_battery_state, 10)
-        self.create_subscription(Float32, 'wind/load_proxy', self._on_wind_proxy, 10)
-        self.create_subscription(LaserScan, 'lidar/scan_360', self._on_lidar_scan, 10)
-        self.create_subscription(String, 'mission/state', self._on_mission_state, 10)
+        self.create_subscription(Float32, str(self.get_parameter('vio_quality_topic').value), self._on_vio_quality, 10)
+        self.create_subscription(Float32, str(self.get_parameter('vio_pose_age_topic').value), self._on_vio_pose_age, 10)
+        self.create_subscription(BatteryState, str(self.get_parameter('battery_topic').value), self._on_battery_state, 10)
+        self.create_subscription(Float32, str(self.get_parameter('wind_proxy_topic').value), self._on_wind_proxy, 10)
+        self.create_subscription(LaserScan, str(self.get_parameter('lidar_topic').value), self._on_lidar_scan, 10)
+        self.create_subscription(String, str(self.get_parameter('mission_state_topic').value), self._on_mission_state, 10)
 
         self.create_timer(0.1, self._evaluate_safety)
 
@@ -62,7 +73,6 @@ class SafetySupervisor(Node):
         self._state_machine.update_mission_phase(msg.data)
 
     def _evaluate_safety(self) -> None:
-        # Deterministic order is maintained by priority in MissionStateMachine.
         for event_dict in [self._vio_monitor.evaluate(), self._power_monitor.evaluate(), self._cage_monitor.evaluate()]:
             if event_dict is None:
                 continue
@@ -119,18 +129,21 @@ class SafetySupervisor(Node):
         self._safe_zone_pub.publish(msg)
 
     def _publish_avoidance(self, payload: dict) -> None:
-        cmd = Twist()
-        cmd.linear.x = float(payload['pushback_vector']['x'])
-        cmd.linear.y = float(payload['pushback_vector']['y'])
-        cmd.linear.z = float(payload['velocity_limit_mps'])
-        self._avoidance_pub.publish(cmd)
+        vec = payload.get('pushback_vector', {'x': 0.0, 'y': 0.0})
+        msg = Twist()
+        msg.linear.x = float(vec.get('x', 0.0))
+        msg.linear.y = float(vec.get('y', 0.0))
+        msg.linear.z = float(payload.get('velocity_limit_mps', 0.0))
+        self._avoidance_pub.publish(msg)
 
 
-def main(args: Optional[list] = None) -> None:
-    rclpy.init(args=args)
+def main() -> None:
+    rclpy.init()
     node = SafetySupervisor()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
         rclpy.shutdown()

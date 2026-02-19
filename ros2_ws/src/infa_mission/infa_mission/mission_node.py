@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple
 import rclpy
 from geometry_msgs.msg import PoseArray, PoseStamped, Twist
 from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray, String
+from std_msgs.msg import Bool, Float32MultiArray, String
 from std_srvs.srv import Trigger
 
 from .mission_logic import LawnmowerConfig, LawnmowerPlanner, StructureLockConfig, StructureLockController
@@ -30,6 +30,17 @@ class MissionNode(Node):
         self.declare_parameter('patch_width_m', 5.0)
         self.declare_parameter('patch_height_m', 3.0)
 
+        self.declare_parameter('pose_topic', '/infa/local_pose')
+        self.declare_parameter('plane_topic', '/infa/structure_plane')
+        self.declare_parameter('state_topic', '/infa/mission/state')
+        self.declare_parameter('cmd_topic', '/infa/mission/cmd_vel')
+        self.declare_parameter('waypoint_topic', '/infa/mission/sweep_waypoints')
+        self.declare_parameter('complete_topic', '/infa/mission_complete')
+        self.declare_parameter('preempt_topic', '/infa/mission/preempt')
+        self.declare_parameter('start_service', '/infa/mission/start')
+        self.declare_parameter('abort_service', '/infa/mission/abort')
+        self.declare_parameter('auto_start', False)
+
         self.controller = StructureLockController(
             StructureLockConfig(
                 standoff_m=float(self.get_parameter('standoff_m').value),
@@ -50,18 +61,32 @@ class MissionNode(Node):
         self.plane: Optional[List[float]] = None
         self.sweep_waypoints: List[Tuple[float, float]] = []
 
-        self.pose_sub = self.create_subscription(PoseStamped, '/infa/local_pose', self._on_pose, 10)
-        self.plane_sub = self.create_subscription(Float32MultiArray, '/infa/structure_plane', self._on_plane, 10)
+        pose_topic = str(self.get_parameter('pose_topic').value)
+        plane_topic = str(self.get_parameter('plane_topic').value)
+        state_topic = str(self.get_parameter('state_topic').value)
+        cmd_topic = str(self.get_parameter('cmd_topic').value)
+        waypoint_topic = str(self.get_parameter('waypoint_topic').value)
+        complete_topic = str(self.get_parameter('complete_topic').value)
+        preempt_topic = str(self.get_parameter('preempt_topic').value)
 
-        self.state_pub = self.create_publisher(String, '/infa/mission/state', 10)
-        self.cmd_pub = self.create_publisher(Twist, '/infa/mission/cmd_vel', 10)
-        self.waypoint_pub = self.create_publisher(PoseArray, '/infa/mission/sweep_waypoints', 10)
+        self.pose_sub = self.create_subscription(PoseStamped, pose_topic, self._on_pose, 10)
+        self.plane_sub = self.create_subscription(Float32MultiArray, plane_topic, self._on_plane, 10)
+        self.preempt_sub = self.create_subscription(String, preempt_topic, self._on_preempt, 10)
 
-        self.start_srv = self.create_service(Trigger, '/infa/mission/start', self._start_cb)
-        self.abort_srv = self.create_service(Trigger, '/infa/mission/abort', self._abort_cb)
+        self.state_pub = self.create_publisher(String, state_topic, 10)
+        self.cmd_pub = self.create_publisher(Twist, cmd_topic, 10)
+        self.waypoint_pub = self.create_publisher(PoseArray, waypoint_topic, 10)
+        self.complete_pub = self.create_publisher(Bool, complete_topic, 10)
+
+        self.start_srv = self.create_service(Trigger, str(self.get_parameter('start_service').value), self._start_cb)
+        self.abort_srv = self.create_service(Trigger, str(self.get_parameter('abort_service').value), self._abort_cb)
 
         self.timer = self.create_timer(0.1, self._tick)
         self._publish_state()
+
+        if bool(self.get_parameter('auto_start').value):
+            self.state = MissionState.LOCK
+            self._publish_state()
 
     def _on_pose(self, msg: PoseStamped) -> None:
         self.pose = (msg.pose.position.x, msg.pose.position.y, msg.pose.position.z)
@@ -69,6 +94,13 @@ class MissionNode(Node):
     def _on_plane(self, msg: Float32MultiArray) -> None:
         if len(msg.data) >= 4:
             self.plane = list(msg.data[:4])
+
+    def _on_preempt(self, msg: String) -> None:
+        if self.state in {MissionState.COMPLETE, MissionState.ABORT}:
+            return
+        self.get_logger().warning(f'Received safety preempt: {msg.data}')
+        self.state = MissionState.ABORT
+        self._publish_state()
 
     def _start_cb(self, _, response: Trigger.Response) -> Trigger.Response:
         if self.state not in {MissionState.IDLE, MissionState.COMPLETE, MissionState.ABORT}:
@@ -141,6 +173,11 @@ class MissionNode(Node):
         msg = String()
         msg.data = self.state.value
         self.state_pub.publish(msg)
+
+        done = Bool()
+        done.data = self.state == MissionState.COMPLETE
+        self.complete_pub.publish(done)
+
         self.get_logger().info(f'Mission state: {msg.data}')
 
 
