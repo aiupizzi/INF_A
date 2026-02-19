@@ -1,0 +1,1 @@
+"""INF-A SLAM package."""
