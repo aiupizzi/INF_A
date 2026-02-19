@@ -1,0 +1,21 @@
+{
+  "source_frame": "infa_local_mission_frame",
+  "target_crs": {
+    "name": "webodm_reconstruction_epsg4978_like",
+    "unit": "meters"
+  },
+  "transform": {
+    "affine_2d": {
+      "scale_x": 1.0,
+      "scale_y": 1.0,
+      "rotation_deg": 0.0,
+      "translation_x": 0.0,
+      "translation_y": 0.0
+    }
+  },
+  "assumptions": {
+    "z_passthrough": true,
+    "origin_alignment": "local mission origin was manually aligned to first GCP in reconstruction",
+    "rotation_reference": "positive rotation is counter-clockwise about +Z"
+  }
+}

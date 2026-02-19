@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geojson-exporter"
+version = "0.1.0"
+description = "Transform local defect coordinates and export GeoJSON artifacts"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+geojson-exporter = "geojson_exporter.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["geojson_exporter*"]
