@@ -33,10 +33,12 @@ class MissionSyncNode(Node):
         self.declare_parameter('verify_tls', True)
         self.declare_parameter('task_name_prefix', 'infa-mission')
         self.declare_parameter('task_options_json', '{}')
+        self.declare_parameter('sync_status_topic', '/infa/sync/status')
+        self.declare_parameter('reconstruction_result_topic', '/infa/sync/reconstruction_result')
 
         topic = self.get_parameter('mission_complete_topic').value
-        self._status_pub = self.create_publisher(String, '~/sync_status', 10)
-        self._result_pub = self.create_publisher(String, '~/reconstruction_result', 10)
+        self._status_pub = self.create_publisher(String, str(self.get_parameter('sync_status_topic').value), 10)
+        self._result_pub = self.create_publisher(String, str(self.get_parameter('reconstruction_result_topic').value), 10)
         self._sub = self.create_subscription(Bool, topic, self._on_mission_complete, 10)
 
         self.get_logger().info(f'Listening for mission completion on: {topic}')

@@ -8,7 +8,7 @@ ROS 2 package that waits for mission completion, uploads mission imagery to WebO
 2. Collects images from `imagery_dir` matching `image_pattern`.
 3. Authenticates to WebODM API (`/api/token-auth/`) and creates a task under `webodm_project_id`.
 4. Polls task state until success/failure/timeout.
-5. Publishes JSON status messages on `~/sync_status` and result payload on `~/reconstruction_result`.
+5. Publishes JSON status messages on `/infa/sync/status` and result payload on `/infa/sync/reconstruction_result`.
 
 ## Run
 

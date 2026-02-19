@@ -9,3 +9,11 @@ Infrastructure for mission autonomy data flow.
 - `docs/coordinate-transform-assumptions.md`: coordinate mapping assumptions and formula.
 
 - `web/dashboard`: Vite + React dashboard for mission reconstruction, GeoJSON defect pinning, audit timeline, and Supabase audit-log integration.
+
+- `docs/ros-topic-contracts.md`: frozen ROS topic/service contracts between SLAM, mission, inference, safety, and sync modules plus full-mission launch command.
+
+## Simulated full mission launch
+
+```bash
+ros2 launch infa_mission infa_full_mission_sim.launch.py
+```
